@@ -1,16 +1,16 @@
 server:
-  port: 8080
+  port: ${SERVER_PORT}
 
 spring:
   datasource:
-    url: "jdbc:mysql://localhost:3306/smart_study_room"
-    username: root
-    password: buiqui2005
+    url: ${SPRING_DATASOURCE_URL}
+    username: ${SPRING_DATASOURCE_USERNAME:root}
+    password: ${SPRING_DATASOURCE_PASSWORD}
   jpa:
     hibernate:
-      ddl-auto: update
+      ddl-auto: ${JPA_HIBERNATE_DDL-AUTO:UPDATE}
 
 jwt:
-  signerKey: "6ccda8decc38127a1a2d7b5665c6835645ea8db3900e4c3459698eb0b60f3313"
-  valid-duration: 36000 #seconds
-  refreshable-duration: 360000 #seconds
+  signerKey: ${JWT_SIGNERKEY}
+  valid-duration: ${JWT_VALID-DURATION:36000} #seconds
+  refreshable-duration: ${JWT_REFRESHABLE-DURATION:360000} #seconds

@@ -1,0 +1,1556 @@
+openapi: 3.0.3
+info:
+  title: Smart Study Room IoT API
+  version: 1.0.0
+  description: |
+    OpenAPI contract for the Smart Study Room project APIs, including the
+    Spring Boot backend and the internal FastAPI speech prediction service.
+
+    All JSON REST endpoints return a common ApiResponse envelope containing
+    `code`, `message`, `timestamp`, and an optional `result`.
+
+    Authentication uses JWT bearer tokens. Public REST endpoints are explicitly
+    marked with `security: []`. The WebSocket endpoint uses STOMP over
+    `/ws` and publishes device commands on `/topic/commands`.
+servers:
+  - url: http://localhost:8080
+    description: Local backend server
+
+tags:
+  - name: Auth
+    description: Registration, login, token verification, logout, and refresh.
+  - name: Users
+    description: User profile and administration APIs.
+  - name: Devices
+    description: User device inventory and manual device control.
+  - name: Sensors
+    description: User sensors and historical sensor readings.
+  - name: IoT Edge
+    description: Endpoints used by gateways and sensor nodes.
+  - name: Commands
+    description: Device command history.
+  - name: Auto Rules
+    description: Sensor-triggered automation rules.
+  - name: Speech Inputs
+    description: Voice command prediction and history.
+  - name: WebSocket
+    description: STOMP websocket endpoint and broker topics.
+  - name: AI Service
+    description: Internal FastAPI service used by the backend for speech intent prediction.
+
+paths:
+  /auth/register:
+    post:
+      tags:
+        - Auth
+      summary: Register a new user
+      description: Creates a user and automatically provisions default FAN/LIGHT devices and HUMIDITY/LIGHT/TEMPERATURE sensors.
+      operationId: registerUser
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserRequest'
+            example:
+              email: learner@example.com
+              phone: "0912345678"
+              password: secret123
+              firstName: An
+              middleName: Minh
+              lastName: Nguyen
+      responses:
+        "200":
+          description: User registered successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponseEnvelope'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "409":
+          $ref: '#/components/responses/Conflict'
+
+  /auth/login:
+    post:
+      tags:
+        - Auth
+      summary: Log in with email or phone
+      operationId: login
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthenticationRequest'
+            example:
+              identifier: learner@example.com
+              password: secret123
+      responses:
+        "200":
+          description: Authentication succeeded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/logout:
+    post:
+      tags:
+        - Auth
+      summary: Logout and invalidate a token
+      operationId: logout
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        "200":
+          description: Token invalidated successfully.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /auth/verify:
+    post:
+      tags:
+        - Auth
+      summary: Verify whether a token is valid
+      operationId: verifyToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        "200":
+          description: Token verification result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntrospectResponseEnvelope'
+
+  /auth/refresh:
+    post:
+      tags:
+        - Auth
+      summary: Refresh an access token
+      operationId: refreshToken
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        "200":
+          description: New access token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthenticationResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /users:
+    get:
+      tags:
+        - Users
+      summary: List all users
+      description: Requires an authenticated user with ADMIN authority.
+      operationId: listUsers
+      responses:
+        "200":
+          description: User list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserListResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /users/my-info:
+    get:
+      tags:
+        - Users
+      summary: Get the currently authenticated user
+      operationId: getMyInfo
+      responses:
+        "200":
+          description: Current user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{userId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags:
+        - Users
+      summary: Get a user by ID
+      description: ADMIN users may access any user; normal users may access only themselves.
+      operationId: getUser
+      responses:
+        "200":
+          description: User profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+        - Users
+      summary: Update a user
+      description: ADMIN users may update any user; normal users may update only themselves.
+      operationId: updateUser
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UserUpdateRequest'
+      responses:
+        "200":
+          description: Updated user profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserResponseEnvelope'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "409":
+          $ref: '#/components/responses/Conflict'
+    delete:
+      tags:
+        - Users
+      summary: Delete a user
+      description: ADMIN users may delete any user; normal users may delete only themselves.
+      operationId: deleteUser
+      responses:
+        "200":
+          description: User deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/devices:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags:
+        - Devices
+      summary: List a user's devices
+      operationId: listDevices
+      responses:
+        "200":
+          description: Device list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceListResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{userId}/devices/{deviceId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/DeviceId'
+    get:
+      tags:
+        - Devices
+      summary: Get a device by ID
+      operationId: getDevice
+      responses:
+        "200":
+          description: Device details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeviceResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/devices/{deviceId}/control:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/DeviceId'
+    post:
+      tags:
+        - Devices
+      summary: Manually control a device
+      description: FAN values are clamped to 0-100. LIGHT values are converted to 100 when greater than 0, otherwise 0.
+      operationId: controlDevice
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeviceControlRequest'
+            example:
+              targetValue: 66
+      responses:
+        "200":
+          description: Command created and published to the gateway.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandResponseEnvelope'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/sensors:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags:
+        - Sensors
+      summary: List a user's sensors
+      operationId: listSensors
+      responses:
+        "200":
+          description: Sensor list with latest values when available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorListResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+
+  /users/{userId}/sensors/{sensorId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/SensorId'
+    get:
+      tags:
+        - Sensors
+      summary: Get a sensor by ID
+      operationId: getSensor
+      responses:
+        "200":
+          description: Sensor details with latest value when available.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/sensors/{sensorId}/data:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/SensorId'
+    get:
+      tags:
+        - Sensors
+      summary: List historical readings for a sensor
+      operationId: listSensorData
+      responses:
+        "200":
+          description: Readings ordered by newest timestamp first.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SensorDataListResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Sensors
+      summary: Delete sensor readings
+      description: Deletes all readings, or readings filtered by `from`, `to`, or both.
+      operationId: deleteSensorData
+      parameters:
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive lower timestamp bound.
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+            format: date-time
+          description: Inclusive upper timestamp bound.
+      responses:
+        "200":
+          description: Number of deleted rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/IntegerResponseEnvelope'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "403":
+          $ref: '#/components/responses/Forbidden'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /iot/sensor-data:
+    post:
+      tags:
+        - IoT Edge
+      summary: Receive sensor data from an IoT gateway
+      description: Public endpoint. If `userId` is omitted, the request must be authenticated so the backend can use the JWT subject.
+      operationId: receiveIotSensorData
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorDataRequest'
+            example:
+              userId: c7ab5c64-cee4-4ef6-9b2e-1f71824c0920
+              sensorType: TEMPERATURE
+              value: 27.4
+      responses:
+        "200":
+          description: Sensor reading accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /sensor-data:
+    post:
+      tags:
+        - IoT Edge
+      summary: Receive sensor data from an IoT gateway
+      description: Alias of `POST /iot/sensor-data`.
+      operationId: receiveSensorDataAlias
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorDataRequest'
+      responses:
+        "200":
+          description: Sensor reading accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /sensors/sensor-data:
+    post:
+      tags:
+        - IoT Edge
+      summary: Receive sensor data from an IoT gateway
+      description: Alias of `POST /iot/sensor-data`.
+      operationId: receiveSensorsSensorDataAlias
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SensorDataRequest'
+      responses:
+        "200":
+          description: Sensor reading accepted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/commands:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags:
+        - Commands
+      summary: List command history for a user
+      operationId: listCommands
+      responses:
+        "200":
+          description: Command history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandListResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{userId}/commands/{commandId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/CommandId'
+    get:
+      tags:
+        - Commands
+      summary: Get a command by ID
+      operationId: getCommand
+      responses:
+        "200":
+          description: Command details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommandResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Commands
+      summary: Delete a command history record
+      operationId: deleteCommand
+      responses:
+        "200":
+          description: Command deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/auto-rules:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags:
+        - Auto Rules
+      summary: List auto rules for a user
+      operationId: listAutoRules
+      responses:
+        "200":
+          description: Auto rule list.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutoRuleListResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags:
+        - Auto Rules
+      summary: Create an auto rule
+      operationId: createAutoRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoRuleCreationRequest'
+            example:
+              sensorId: 2dbe33d6-b781-4090-b391-16dcefab9472
+              deviceId: 74de7731-2e2f-4d20-9585-87d725d209cc
+              operator: GT
+              thresh: 30
+              targetValue: 100
+      responses:
+        "200":
+          description: Created auto rule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutoRuleResponseEnvelope'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/auto-rules/{autoRuleId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/AutoRuleId'
+    get:
+      tags:
+        - Auto Rules
+      summary: Get an auto rule by ID
+      operationId: getAutoRule
+      responses:
+        "200":
+          description: Auto rule details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutoRuleResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags:
+        - Auto Rules
+      summary: Update an auto rule
+      operationId: updateAutoRule
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AutoRuleUpdateRequest'
+      responses:
+        "200":
+          description: Updated auto rule.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AutoRuleResponseEnvelope'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Auto Rules
+      summary: Delete an auto rule
+      description: Also deletes command records linked to the rule.
+      operationId: deleteAutoRule
+      responses:
+        "200":
+          description: Auto rule deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /users/{userId}/speech-inputs:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    get:
+      tags:
+        - Speech Inputs
+      summary: List speech input history for a user
+      operationId: listSpeechInputs
+      responses:
+        "200":
+          description: Speech input history.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeechInputListResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+
+  /users/{userId}/speech-inputs/predict:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+    post:
+      tags:
+        - Speech Inputs
+      summary: Process a voice command
+      description: Sends raw text to the local AI service, stores the prediction, and creates a device command when confidence and intent are valid.
+      operationId: predictSpeechInput
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SpeechInputRequest'
+            example:
+              rawtext: bật quạt
+      responses:
+        "200":
+          description: Speech input result.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeechInputResponseEnvelope'
+        "400":
+          $ref: '#/components/responses/BadRequest'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+        "502":
+          $ref: '#/components/responses/BadGateway'
+        "503":
+          $ref: '#/components/responses/ServiceUnavailable'
+        "504":
+          $ref: '#/components/responses/GatewayTimeout'
+
+  /users/{userId}/speech-inputs/{speechInputId}:
+    parameters:
+      - $ref: '#/components/parameters/UserId'
+      - $ref: '#/components/parameters/SpeechInputId'
+    get:
+      tags:
+        - Speech Inputs
+      summary: Get a speech input by ID
+      operationId: getSpeechInput
+      responses:
+        "200":
+          description: Speech input details.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SpeechInputResponseEnvelope'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags:
+        - Speech Inputs
+      summary: Delete a speech input history record
+      operationId: deleteSpeechInput
+      responses:
+        "200":
+          description: Speech input deleted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmptyResponse'
+        "401":
+          $ref: '#/components/responses/Unauthorized'
+        "404":
+          $ref: '#/components/responses/NotFound'
+
+  /ws:
+    get:
+      tags:
+        - WebSocket
+      summary: STOMP WebSocket endpoint
+      description: |
+        Upgrade to WebSocket and use STOMP 1.2.
+
+        Backend broker:
+
+        - Endpoint: `ws://localhost:8080/ws`
+        - Application destination prefix: `/app`
+        - Simple broker prefix: `/topic`
+        - Device command topic: `/topic/commands`
+
+        Command messages published by the backend contain `userId`,
+        `deviceType`, and `value`.
+      operationId: websocketEndpoint
+      security: []
+      responses:
+        "101":
+          description: Switching Protocols.
+      x-stomp-topics:
+        /topic/commands:
+          direction: server-to-client
+          messageSchema:
+            $ref: '#/components/schemas/GatewayCommandMessage'
+
+  /health:
+    get:
+      tags:
+        - AI Service
+      summary: Check AI service health
+      description: Internal FastAPI service health endpoint.
+      operationId: getAiServiceHealth
+      security: []
+      servers:
+        - url: http://localhost:8000
+          description: Local AI service server
+      responses:
+        "200":
+          description: AI service is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiHealthResponse'
+
+  /predict:
+    post:
+      tags:
+        - AI Service
+      summary: Predict a speech intent label
+      description: Internal FastAPI endpoint called by the Spring backend speech flow.
+      operationId: predictSpeechIntent
+      security: []
+      servers:
+        - url: http://localhost:8000
+          description: Local AI service server
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AiSpeechInputRequest'
+            examples:
+              rawtext:
+                value:
+                  rawtext: bật quạt
+              rawText:
+                value:
+                  rawText: bật đèn
+      responses:
+        "200":
+          description: Predicted intent and confidence.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AiSpeechInputResult'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  parameters:
+    UserId:
+      name: userId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: User UUID.
+    DeviceId:
+      name: deviceId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Device UUID.
+    SensorId:
+      name: sensorId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Sensor UUID.
+    CommandId:
+      name: commandId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Command UUID.
+    AutoRuleId:
+      name: autoRuleId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Auto rule UUID.
+    SpeechInputId:
+      name: speechInputId
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+      description: Speech input UUID.
+
+  responses:
+    BadRequest:
+      description: Invalid request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Unauthorized:
+      description: Missing, invalid, expired, or unauthorized token.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Forbidden:
+      description: Authenticated user is not allowed to access this resource.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    NotFound:
+      description: Requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    Conflict:
+      description: Resource conflict, such as duplicate email or phone.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    BadGateway:
+      description: Upstream device or AI service returned an invalid response.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ServiceUnavailable:
+      description: AI service is unavailable.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    GatewayTimeout:
+      description: AI service timed out.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+
+  schemas:
+    ApiResponseBase:
+      type: object
+      properties:
+        code:
+          type: integer
+          default: 0
+          example: 0
+        message:
+          type: string
+          default: success
+          example: success
+        timestamp:
+          type: string
+          format: date-time
+          example: "2026-05-28T09:30:00"
+
+    EmptyResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+
+    ErrorResponse:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+      example:
+        code: 1001
+        message: Invalid request
+        timestamp: "2026-05-28T09:30:00"
+
+    IntegerResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              type: integer
+              example: 24
+
+    UserResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/UserResponse'
+
+    UserListResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: '#/components/schemas/UserResponse'
+
+    AuthenticationResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/AuthenticationResponse'
+
+    IntrospectResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/IntrospectResponse'
+
+    DeviceResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/DeviceResponse'
+
+    DeviceListResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: '#/components/schemas/DeviceResponse'
+
+    SensorResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/SensorResponse'
+
+    SensorListResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: '#/components/schemas/SensorResponse'
+
+    SensorDataListResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: '#/components/schemas/SensorDataResponse'
+
+    CommandResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/CommandResponse'
+
+    CommandListResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: '#/components/schemas/CommandResponse'
+
+    AutoRuleResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/AutoRuleResponse'
+
+    AutoRuleListResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: '#/components/schemas/AutoRuleResponse'
+
+    SpeechInputResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              $ref: '#/components/schemas/SpeechInputResponse'
+
+    SpeechInputListResponseEnvelope:
+      allOf:
+        - $ref: '#/components/schemas/ApiResponseBase'
+        - type: object
+          properties:
+            result:
+              type: array
+              items:
+                $ref: '#/components/schemas/SpeechInputResponse'
+
+    UserRequest:
+      type: object
+      required:
+        - email
+        - password
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        password:
+          type: string
+          format: password
+        firstName:
+          type: string
+        middleName:
+          type: string
+        lastName:
+          type: string
+
+    UserUpdateRequest:
+      type: object
+      properties:
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+        password:
+          type: string
+          format: password
+        firstName:
+          type: string
+        middleName:
+          type: string
+        lastName:
+          type: string
+
+    AuthenticationRequest:
+      type: object
+      required:
+        - identifier
+        - password
+      properties:
+        identifier:
+          type: string
+          description: Email address or phone number.
+        password:
+          type: string
+          format: password
+
+    TokenRequest:
+      type: object
+      required:
+        - token
+      properties:
+        token:
+          type: string
+          description: JWT access token.
+
+    DeviceControlRequest:
+      type: object
+      required:
+        - targetValue
+      properties:
+        targetValue:
+          type: integer
+          minimum: 0
+          maximum: 100
+          description: Desired intensity. FAN supports 0-100; LIGHT is normalized to off/on.
+
+    AutoRuleCreationRequest:
+      type: object
+      required:
+        - operator
+        - thresh
+        - sensorId
+        - deviceId
+        - targetValue
+      properties:
+        operator:
+          $ref: '#/components/schemas/Operator'
+        thresh:
+          type: number
+          format: double
+        sensorId:
+          type: string
+          format: uuid
+        deviceId:
+          type: string
+          format: uuid
+        targetValue:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    AutoRuleUpdateRequest:
+      type: object
+      properties:
+        operator:
+          $ref: '#/components/schemas/Operator'
+        thresh:
+          type: number
+          format: double
+        targetValue:
+          type: integer
+          minimum: 0
+          maximum: 100
+        active:
+          type: boolean
+
+    SpeechInputRequest:
+      type: object
+      required:
+        - rawtext
+      properties:
+        rawtext:
+          type: string
+          description: Raw voice transcription text.
+
+    SensorDataRequest:
+      type: object
+      required:
+        - sensorType
+        - value
+      properties:
+        userId:
+          type: string
+          format: uuid
+          nullable: true
+          description: Optional user ID. If absent, the backend uses the authenticated JWT subject.
+        sensorType:
+          $ref: '#/components/schemas/SensorType'
+        value:
+          type: number
+          format: double
+
+    AuthenticationResponse:
+      type: object
+      properties:
+        token:
+          type: string
+
+    IntrospectResponse:
+      type: object
+      properties:
+        valid:
+          type: boolean
+
+    UserResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        phone:
+          type: string
+          nullable: true
+        firstName:
+          type: string
+          nullable: true
+        middleName:
+          type: string
+          nullable: true
+        lastName:
+          type: string
+          nullable: true
+        fullName:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        lastUpdated:
+          type: string
+          format: date-time
+        lastLogin:
+          type: string
+          format: date-time
+          nullable: true
+        roles:
+          type: array
+          uniqueItems: true
+          items:
+            $ref: '#/components/schemas/Role'
+
+    DeviceResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        deviceType:
+          $ref: '#/components/schemas/DeviceType'
+        intensityLevel:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    SensorResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        sensorType:
+          $ref: '#/components/schemas/SensorType'
+        currentValue:
+          type: number
+          format: double
+          nullable: true
+
+    SensorDataResponse:
+      type: object
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        value:
+          type: number
+          format: double
+
+    CommandResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        commandType:
+          $ref: '#/components/schemas/CommandType'
+        device:
+          $ref: '#/components/schemas/DeviceResponse'
+        previousIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+        currentIntensity:
+          type: integer
+          minimum: 0
+          maximum: 100
+        autoRuleId:
+          type: string
+          format: uuid
+          nullable: true
+        speechInputId:
+          type: string
+          format: uuid
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+
+    AutoRuleResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        description:
+          type: string
+          example: Set FAN to 100 when TEMPERATURE > 30
+        active:
+          type: boolean
+        operator:
+          $ref: '#/components/schemas/Operator'
+        thresh:
+          type: number
+          format: double
+        sensorResponse:
+          $ref: '#/components/schemas/SensorResponse'
+        deviceResponse:
+          $ref: '#/components/schemas/DeviceResponse'
+        targetValue:
+          type: integer
+          minimum: 0
+          maximum: 100
+
+    SpeechInputResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        rawtext:
+          type: string
+        predictLabel:
+          type: string
+          nullable: true
+          example: TURN_ON_FAN
+        confidence:
+          type: number
+          format: double
+          nullable: true
+          minimum: 0
+          maximum: 1
+        createdAt:
+          type: string
+          format: date-time
+        device:
+          allOf:
+            - $ref: '#/components/schemas/DeviceResponse'
+          nullable: true
+        targetValue:
+          type: integer
+          minimum: 0
+          maximum: 100
+          nullable: true
+
+    GatewayCommandMessage:
+      type: object
+      required:
+        - userId
+        - deviceType
+        - value
+      properties:
+        userId:
+          type: string
+          format: uuid
+        deviceType:
+          $ref: '#/components/schemas/DeviceType'
+        value:
+          type: integer
+          minimum: 0
+          maximum: 100
+      example:
+        userId: c7ab5c64-cee4-4ef6-9b2e-1f71824c0920
+        deviceType: FAN
+        value: 66
+
+    AiHealthResponse:
+      type: object
+      properties:
+        status:
+          type: string
+          example: ok
+
+    AiSpeechInputRequest:
+      type: object
+      description: The AI service accepts either `rawtext` or `rawText`.
+      properties:
+        rawtext:
+          type: string
+        rawText:
+          type: string
+      oneOf:
+        - required:
+            - rawtext
+        - required:
+            - rawText
+
+    AiSpeechInputResult:
+      type: object
+      properties:
+        predictLabel:
+          type: string
+          enum:
+            - TURN_ON_FAN
+            - TURN_OFF_FAN
+            - TURN_ON_LIGHT
+            - TURN_OFF_LIGHT
+            - UNKNOWN
+        confidence:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 1
+
+    SensorType:
+      type: string
+      enum:
+        - TEMPERATURE
+        - LIGHT
+        - HUMIDITY
+
+    DeviceType:
+      type: string
+      enum:
+        - FAN
+        - LIGHT
+
+    CommandType:
+      type: string
+      enum:
+        - AUTO_RULE
+        - SPEECH
+        - MANUAL
+
+    Operator:
+      type: string
+      enum:
+        - EQ
+        - NEQ
+        - LT
+        - GT
+        - LE
+        - GE
+
+    Role:
+      type: string
+      enum:
+        - USER
+        - ADMIN
+
+security:
+  - bearerAuth: []
