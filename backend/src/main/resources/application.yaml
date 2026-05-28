@@ -1,16 +1,22 @@
 server:
-  port: ${SERVER_PORT}
+  port: ${PORT:8080}
 
 spring:
   datasource:
     url: ${SPRING_DATASOURCE_URL}
-    username: ${SPRING_DATASOURCE_USERNAME:root}
+    username: ${SPRING_DATASOURCE_USERNAME}
     password: ${SPRING_DATASOURCE_PASSWORD}
+    driver-class-name: com.mysql.cj.jdbc.Driver
+
   jpa:
     hibernate:
-      ddl-auto: ${JPA_HIBERNATE_DDL-AUTO:UPDATE}
+      ddl-auto: ${JPA_DDL_AUTO:update}
+    show-sql: false
+    properties:
+      hibernate:
+        dialect: org.hibernate.dialect.MySQLDialect
 
 jwt:
-  signerKey: ${JWT_SIGNERKEY}
-  valid-duration: ${JWT_VALID-DURATION:36000} #seconds
-  refreshable-duration: ${JWT_REFRESHABLE-DURATION:360000} #seconds
+  signerKey: ${JWT_SIGNER_KEY}
+  valid-duration: ${JWT_VALID_DURATION:36000}
+  refreshable-duration: ${JWT_REFRESHABLE_DURATION:360000}
