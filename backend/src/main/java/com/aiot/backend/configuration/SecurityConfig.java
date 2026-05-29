@@ -27,7 +27,7 @@ public class SecurityConfig {
             "/auth/login",
             "/auth/verify",
             "/auth/refresh",
-            "auth/greet"
+            "/auth/greet"
     };
 
     private final String[] PUBLIC_IOT_ENDPOINTS = {
