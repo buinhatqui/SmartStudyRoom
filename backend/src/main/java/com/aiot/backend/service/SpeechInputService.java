@@ -17,6 +17,7 @@ import com.aiot.backend.repository.DeviceRepository;
 import com.aiot.backend.repository.SpeechInputRepository;
 import lombok.AccessLevel;
 import lombok.experimental.FieldDefaults;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 import org.springframework.web.reactive.function.client.WebClient;
 import reactor.core.publisher.Mono;
@@ -39,7 +40,8 @@ public class SpeechInputService {
     WebClient webClient;
 
     public SpeechInputService(CommandRepository commandRepository, CommandService commandService, SpeechInputRepository speechInputRepository,
-                              SpeechInputMapper speechInputMapper, DeviceRepository deviceRepository, UserService userService) {
+                              SpeechInputMapper speechInputMapper, DeviceRepository deviceRepository, UserService userService,
+                              @Value("${ai.service-url}") String aiServiceUrl) {
         this.commandRepository = commandRepository;
         this.commandService = commandService;
         this.speechInputRepository = speechInputRepository;
@@ -47,7 +49,7 @@ public class SpeechInputService {
         this.deviceRepository = deviceRepository;
         this.userService = userService;
         this.webClient = WebClient.builder()
-                .baseUrl("http://localhost:8000")
+                .baseUrl(aiServiceUrl)
                 .build();
     }
 
@@ -167,7 +169,7 @@ public class SpeechInputService {
                 .onStatus(status -> status.is4xxClientError(),
                         res -> Mono.error(new WebException(ErrorCode.ML_BAD_REQUEST)))
                 .bodyToMono(SpeechInputResult.class)
-                .timeout(Duration.ofSeconds(2))
+                .timeout(Duration.ofSeconds(5))
                 .onErrorMap(ex -> {
                     if (ex instanceof WebException) return ex;
                     return new WebException(ErrorCode.ML_TIMEOUT);

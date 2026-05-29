@@ -17,6 +17,9 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
 import java.text.ParseException;
+import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.RequestParam;
+
 
 @RestController
 @RequiredArgsConstructor
@@ -67,4 +70,19 @@ public class AuthenticationController {
                 .result(response)
                 .build();
     }
+
+    @GetMapping("/greet")
+    public String greet() {
+        return "🎶\n" + //
+        "Baby, come near me now\n" + //
+        "You see, this your love don tie me down\n" + //
+        "Call me your prisoner\n" + //
+        "I'm jailed in your love, I ain't coming out\n" + //
+        "Oh girl, you got all the formula\n" + //
+        "Make me high like I'm on tequila\n" + //
+        "Connect like we cellular\n" + //
+        "You enter my medulla\n" + //
+        "🎶";
+    }
+    
 }
