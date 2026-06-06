@@ -689,3 +689,35 @@ JWT_SIGNER_KEY=5536d9c7d3a5520637881025e26519cce4c8a3adb105f10fbe789a6bc17e42e9
 ```
 
 Key này chỉ dùng cho demo/local learning, không dùng cho production hoặc dữ liệu thật.
+
+## Chạy bằng `run.py`
+
+Project có helper `run.py` ở thư mục gốc để điều hướng các lệnh thường dùng bằng terminal. Chạy menu tương tác:
+
+```powershell
+python run.py
+```
+
+Một số lệnh nhanh:
+
+```powershell
+python run.py setup env
+python run.py setup all
+python run.py dev backend
+python run.py dev frontend
+python run.py dev ai
+python run.py dev all
+python run.py db up
+python run.py db down
+python run.py test ai
+python run.py test iot
+python run.py test all
+python run.py clean
+python run.py doctor
+```
+
+Ghi chú:
+
+- `setup env` chỉ tạo file `.env` còn thiếu từ `.env.example`, không ghi đè file đã tồn tại.
+- `dev all` bật MySQL rồi mở backend, frontend, AI service và sensor simulator ở các terminal riêng trên Windows.
+- `doctor` kiểm tra nhanh Python, Java/JAVA_HOME, Maven, Node, npm và Docker trước khi chạy project.
