@@ -57,8 +57,8 @@ export const SENSOR_THRESHOLDS = {
   LIGHT: {
     MIN: 0,
     MAX: 1000,
-    OPTIMAL_MIN: 300,
-    OPTIMAL_MAX: 700,
+    OPTIMAL_MIN: 40,
+    OPTIMAL_MAX: 60,
   },
 } as const;
 

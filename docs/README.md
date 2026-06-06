@@ -11,6 +11,7 @@ Trang này là điểm vào chính cho bộ tài liệu kỹ thuật của Smart
 | [Environment Variables](env.md) | Bảng cấu hình môi trường, default value, lưu ý bảo mật | Developer, deployer |
 | [API Reference](api.md) | REST API, response envelope, request/response examples, WebSocket contract | Frontend/backend developer |
 | [IoT Edge Guide](iot.md) | Serial protocol, gateway, simulator, WebSocket command flow | IoT developer, tester phần cứng |
+| [Light Sensor Flow Codebase](light-sensor-flow-codebase.md) | Bản đồ code theo luồng dữ liệu cảm biến ánh sáng từ IoT edge đến backend, frontend và auto rule | Developer, reviewer, tester |
 | [AI Service Guide](ai-service.md) | FastAPI service, preprocessing, model artifacts, label mapping | AI/backend developer |
 | [Development Guide](development.md) | Quy ước phát triển, test strategy, generated files, troubleshooting | Tất cả contributor |
 | [Codebase Overview](../CODEBASE.md) | Bản đồ thư mục và codebase map chi tiết | Developer mới vào dự án |

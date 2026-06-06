@@ -40,7 +40,7 @@ export const SENSOR_CONFIG: Record<SensorTypeParam, {
   light: {
     label: 'Ánh sáng',
     feed: 'bbc-lux',
-    unit: 'lux',
+    unit: '%',
     icon: Sun,
     accent: 'from-amber-500 to-orange-500',
     soft: 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300',
