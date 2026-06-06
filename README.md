@@ -692,13 +692,40 @@ Key này chỉ dùng cho demo/local learning, không dùng cho production hoặc
 
 ## Chạy bằng `run.py`
 
-Project có helper `run.py` ở thư mục gốc để điều hướng các lệnh thường dùng bằng terminal. Chạy menu tương tác:
+Project có helper `run.py` ở thư mục gốc để gom các thao tác thường dùng khi phát triển: chuẩn bị môi trường, chạy service, bật/tắt database, chạy test, dọn file sinh ra và kiểm tra tool local. Helper này phù hợp khi làm việc trên Windows terminal vì các lệnh frontend dùng `npm.cmd` để tránh lỗi PowerShell execution policy.
+
+### Mục đích
+
+`run.py` giúp tránh phải nhớ nhiều lệnh riêng cho từng module:
+
+- Backend: Spring Boot trong `backend/`.
+- Frontend: React/Vite trong `frontend/`.
+- AI service: FastAPI trong `ai-service/`.
+- IoT edge: gateway, sensor simulator và command simulator trong `iot-edge/`.
+- Database local: MySQL bằng Docker Compose trong `infra/docker-compose.local.yml`.
+
+### Mở menu tương tác
+
+Nếu muốn chọn lệnh bằng menu:
 
 ```powershell
 python run.py
 ```
 
-Một số lệnh nhanh:
+Menu gồm các nhóm:
+
+| Nhóm | Chức năng |
+|---|---|
+| `Setup` | Tạo `.env`, cài dependency Node/Python, bật MySQL |
+| `Dev` | Chạy backend, frontend, AI service, gateway hoặc simulator |
+| `Database` | Quản lý MySQL local bằng Docker Compose |
+| `Test` | Chạy kiểm tra backend, frontend, AI service, IoT edge |
+| `Clean` | Xóa generated files/folders |
+| `Doctor` | Kiểm tra tool local trước khi chạy project |
+
+### Cú pháp lệnh nhanh
+
+Ngoài menu, có thể gọi trực tiếp:
 
 ```powershell
 python run.py setup env
@@ -716,8 +743,183 @@ python run.py clean
 python run.py doctor
 ```
 
-Ghi chú:
+### Nhóm `setup`
+
+Nhóm `setup` dùng khi chuẩn bị môi trường local, đặc biệt ở lần chạy đầu tiên.
+
+| Lệnh | Tác dụng |
+|---|---|
+| `python run.py setup env` | Copy các file `.env.example` sang `.env` nếu file `.env` chưa tồn tại |
+| `python run.py setup frontend` | Chạy `npm.cmd install` trong `frontend/` |
+| `python run.py setup ai` | Tạo `ai-service/.venv` và cài `ai-service/requirements.txt` |
+| `python run.py setup iot` | Tạo `iot-edge/.venv` và cài `iot-edge/requirements.txt` |
+| `python run.py setup db` | Bật MySQL local bằng Docker Compose |
+| `python run.py setup all` | Chạy lần lượt `env`, `frontend`, `ai`, `iot`, `db` |
+
+`setup env` không ghi đè file `.env` đã tồn tại. Nếu bạn đã chỉnh database URL, token, port hoặc secret trong `.env`, các giá trị đó sẽ được giữ nguyên.
+
+### Nhóm `dev`
+
+Nhóm `dev` dùng để chạy từng phần của hệ thống.
+
+| Lệnh | Tác dụng |
+|---|---|
+| `python run.py dev backend` | Chạy Spring Boot backend trong `backend/` |
+| `python run.py dev frontend` | Chạy Vite dev server trong `frontend/` |
+| `python run.py dev ai` | Chạy AI service bằng `python -m uvicorn service:app --host 0.0.0.0 --port 8000` |
+| `python run.py dev gateway` | Chạy gateway thật bằng `iot-edge/gateway.py` |
+| `python run.py dev sensor` | Chạy sensor simulator bằng `iot-edge/test_sensor_flow.py` |
+| `python run.py dev commands` | Chạy command simulator bằng `iot-edge/test_device_control_flow.py` |
+| `python run.py dev all` | Bật MySQL, rồi mở backend, frontend, AI service và sensor simulator ở các terminal riêng |
+
+Khi chạy một service riêng lẻ, terminal hiện tại sẽ giữ process và hiển thị log. Khi chạy `dev all` trên Windows, `run.py` mở nhiều cửa sổ terminal riêng để có thể theo dõi log từng service và dừng từng service độc lập.
+
+Thứ tự chạy thủ công được khuyến nghị:
+
+```powershell
+python run.py db up
+python run.py dev backend
+python run.py dev ai
+python run.py dev frontend
+python run.py dev sensor
+```
+
+### Nhóm `db`
+
+Nhóm `db` quản lý MySQL local bằng file `infra/docker-compose.local.yml`.
+
+| Lệnh | Tác dụng |
+|---|---|
+| `python run.py db up` | Bật MySQL local |
+| `python run.py db down` | Tắt MySQL local |
+| `python run.py db logs` | Xem log MySQL |
+| `python run.py db ps` | Xem trạng thái container |
+
+MySQL local trong compose expose ra host port `3307`, vì vậy nếu dùng database này thì backend `.env` nên trỏ tới:
+
+```properties
+SPRING_DATASOURCE_URL=jdbc:mysql://localhost:3307/smart_study_room
+SPRING_DATASOURCE_USERNAME=root
+SPRING_DATASOURCE_PASSWORD=smart_room_local_password
+```
+
+### Nhóm `test`
+
+Nhóm `test` dùng để kiểm tra từng module hoặc toàn bộ project.
+
+| Lệnh | Tác dụng |
+|---|---|
+| `python run.py test backend` | Chạy Maven test cho backend |
+| `python run.py test frontend` | Chạy `npm.cmd run build` cho frontend |
+| `python run.py test ai` | Compile Python và chạy unit test của AI service |
+| `python run.py test iot` | Compile Python và chạy unit test của IoT edge |
+| `python run.py test all` | Chạy lần lượt backend, frontend, AI service và IoT edge |
+
+Trước khi bàn giao code hoặc commit, nên chạy:
+
+```powershell
+python run.py test all
+```
+
+Nếu backend test báo lỗi Java hoặc Maven, chạy `python run.py doctor` để kiểm tra `JAVA_HOME`, Java và Maven trước.
+
+### Nhóm `clean`
+
+Lệnh clean dùng để xóa file/folder sinh ra trong quá trình phát triển:
+
+```powershell
+python run.py clean
+```
+
+Mặc định lệnh này sẽ hỏi xác nhận trước khi xóa. Nếu chắc chắn muốn xóa ngay:
+
+```powershell
+python run.py clean --yes
+```
+
+Các mục có thể bị xóa gồm:
+
+- `frontend/node_modules`
+- `frontend/dist`
+- `frontend/.vite`
+- `backend/target`
+- `ai-service/.venv`
+- `iot-edge/.venv`
+- `__pycache__`
+
+`run.py` chỉ xóa các đường dẫn nằm trong workspace project để tránh xóa nhầm file bên ngoài.
+
+### Nhóm `doctor`
+
+Lệnh `doctor` kiểm tra nhanh môi trường local:
+
+```powershell
+python run.py doctor
+```
+
+Các tool được kiểm tra:
+
+| Tool | Dùng cho |
+|---|---|
+| Python | Chạy `run.py`, AI service và IoT edge |
+| Java/JAVA_HOME | Chạy backend Spring Boot |
+| Maven hoặc Maven Wrapper | Build/test backend |
+| Node.js | Chạy frontend |
+| npm.cmd | Cài package và build frontend trên Windows |
+| Docker | Chạy MySQL local |
+
+Nếu một dòng báo `FAIL`, hãy sửa tool tương ứng trước khi chạy nhóm lệnh phụ thuộc vào nó. Ví dụ:
+
+- Backend cần Java/JDK, `JAVA_HOME` và Maven.
+- Frontend cần Node.js và npm.
+- Database local cần Docker Desktop đang chạy.
+- AI service và IoT edge cần Python 3.11+.
+
+### Quy trình chạy lần đầu
+
+Khi mới clone project hoặc mới reset môi trường:
+
+```powershell
+python run.py doctor
+python run.py setup env
+python run.py setup frontend
+python run.py setup ai
+python run.py setup iot
+python run.py setup db
+```
+
+Sau đó chạy các service:
+
+```powershell
+python run.py dev all
+```
+
+Hoặc chạy từng phần nếu muốn kiểm soát log trong từng terminal riêng:
+
+```powershell
+python run.py db up
+python run.py dev backend
+python run.py dev ai
+python run.py dev frontend
+python run.py dev sensor
+```
+
+### Lỗi thường gặp
+
+| Hiện tượng | Nguyên nhân thường gặp | Cách xử lý |
+|---|---|---|
+| `JAVA_HOME is not set` | Chưa cấu hình JDK | Cài JDK phù hợp và set `JAVA_HOME` |
+| Maven không chạy được | Java/JDK hoặc `JAVA_HOME` sai | Chạy `python run.py doctor` và sửa Java trước |
+| `npm.ps1 cannot be loaded` | PowerShell chặn script `.ps1` | Dùng `run.py` vì helper gọi `npm.cmd` |
+| Backend không kết nối database | MySQL chưa chạy hoặc sai port/password | Chạy `python run.py db up` và kiểm tra `backend/.env` |
+| AI service không chạy | Thiếu dependency Python | Chạy `python run.py setup ai` |
+| IoT simulator lỗi import package | Thiếu dependency IoT edge | Chạy `python run.py setup iot` |
+| Docker báo lỗi quyền/config | Docker Desktop chưa sẵn sàng hoặc user config bị chặn | Mở Docker Desktop, kiểm tra lại `docker --version` và `python run.py doctor` |
+
+### Ghi chú quan trọng
 
 - `setup env` chỉ tạo file `.env` còn thiếu từ `.env.example`, không ghi đè file đã tồn tại.
 - `dev all` bật MySQL rồi mở backend, frontend, AI service và sensor simulator ở các terminal riêng trên Windows.
 - `doctor` kiểm tra nhanh Python, Java/JAVA_HOME, Maven, Node, npm và Docker trước khi chạy project.
+- `setup all` có thể tải dependencies qua npm, pip và Docker, nên cần internet nếu máy chưa có sẵn package/image.
+- `clean --yes` xóa trực tiếp generated folders, chỉ dùng khi chắc chắn không cần giữ lại virtualenv hoặc `node_modules`.
