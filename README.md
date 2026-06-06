@@ -668,11 +668,15 @@ python -m unittest discover -s tests
 
 ## Tài liệu liên quan
 
+- Bộ tài liệu kỹ thuật: `docs/README.md`
 - Tổng quan codebase: `CODEBASE.md`
 - Kiến trúc: `docs/architecture.md`
 - Setup chi tiết: `docs/setup.md`
 - Biến môi trường: `docs/env.md`
 - API chính: `docs/api.md`
+- IoT edge: `docs/iot.md`
+- AI service: `docs/ai-service.md`
+- Development guide: `docs/development.md`
 
 ## Ghi chú bảo mật
 
