@@ -1,359 +1,398 @@
-# Codebase Map - Smart Study Room
+# Architecture - Smart Study Room
 
-Ngay scan: 2026-06-05
+## 1. Purpose
 
-## Tong quan
+Tài liệu này mô tả kiến trúc kỹ thuật của Smart Study Room ở mức hệ thống. Nội dung tập trung vào thành phần runtime, trách nhiệm từng service, luồng dữ liệu, contract tích hợp và các ràng buộc thiết kế quan trọng.
 
-Smart Study Room la he thong quan ly phong hoc thong minh gom 4 thanh phan chinh:
+Smart Study Room được thiết kế như một hệ thống đa service phục vụ phòng học thông minh:
 
-- `backend/`: Spring Boot REST API, JWT auth, MySQL persistence, WebSocket command broker, auto-rule scheduler.
-- `frontend/`: React + Vite + TypeScript UI, goi truc tiep backend qua Axios va React Query.
-- `ai-service/`: FastAPI service nhan dien intent dieu khien thiet bi bang tieng Viet.
-- `iot-edge/`: Python gateway doc serial tu thiet bi IoT, day sensor len backend va nhan lenh qua STOMP WebSocket.
+- IoT device/gateway thu thập dữ liệu cảm biến và nhận lệnh điều khiển.
+- Backend xử lý nghiệp vụ, xác thực, lưu trữ, tự động hóa và publish command.
+- Frontend cung cấp dashboard và thao tác người dùng.
+- AI service phân loại ý định điều khiển thiết bị từ tiếng Việt.
 
-Luon bo qua khi doc codebase: `node_modules/`, `venv/`, `target/`, `__pycache__/`, `.idea/`.
+## 2. Architecture Goals
 
-## Kien truc chay
-
-```text
-IoT device
-  | serial
-  v
-iot-edge/gateway.py
-  | POST /iot/sensor-data
-  | STOMP subscribe /topic/commands
-  v
-backend Spring Boot
-  | JPA
-  v
-MySQL
-
-frontend React  <----REST/JWT---->  backend
-
-backend  ----POST /predict---->  ai-service FastAPI
-```
-
-## Tech stack
-
-Backend:
-
-- Java 19
-- Spring Boot 4.0.5
-- Spring Data JPA + MySQL
-- Spring Security OAuth2 resource server + custom JWT decoder
-- Spring Web MVC + WebFlux `WebClient`
-- Spring WebSocket STOMP simple broker
-- Lombok, MapStruct
-
-Frontend:
-
-- React 18
-- Vite 7
-- TypeScript 5
-- Tailwind CSS
-- Axios
-- TanStack React Query
-- React Router
-- Chart.js / react-chartjs-2
-- Lucide React
-
-AI service:
-
-- Python 3.11+
-- FastAPI, Uvicorn, Pydantic
-- scikit-learn, joblib
-- underthesea
-- model files in `ai-service/models/`
-
-IoT edge:
-
-- Python
-- pyserial
-- requests
-- websocket-client
-
-## Thu muc chinh
-
-```text
-.
-|-- README.md
-|-- CODEBASE.md
-|-- backend/
-|   |-- pom.xml
-|   |-- src/main/java/com/aiot/backend/
-|   |   |-- BackendApplication.java
-|   |   |-- configuration/
-|   |   |-- controller/
-|   |   |-- service/
-|   |   |-- repository/
-|   |   |-- entity/
-|   |   |-- dto/
-|   |   |-- mapper/
-|   |   |-- enums/
-|   |   `-- exception/
-|   `-- src/main/resources/application.yaml
-|-- frontend/
-|   |-- package.json
-|   |-- vite.config.ts
-|   |-- tsconfig.json
-|   `-- src/
-|       |-- App.tsx
-|       |-- services/api.ts
-|       |-- contexts/
-|       |-- hooks/
-|       |-- pages/
-|       |-- components/
-|       |-- types/
-|       `-- utils/
-|-- ai-service/
-|   |-- service.py
-|   |-- requirements.txt
-|   |-- models/
-|   |-- data/
-|   `-- nlp_model.ipynb
-`-- iot-edge/
-    |-- gateway.py
-    |-- sensor_node.py
-    |-- test_sensor_flow.py
-    |-- test_device_control_flow.py
-    `-- requirements.txt
-```
-
-## Backend map
-
-Entrypoint:
-
-- `backend/src/main/java/com/aiot/backend/BackendApplication.java`
-- Bat scheduling bang `@EnableScheduling`; auto rule chay qua scheduler.
-
-Config:
-
-- `configuration/SecurityConfig.java`: public endpoints cho auth, IoT ingest va WebSocket; cac endpoint con lai can JWT.
-- `configuration/WebSocketConfig.java`: STOMP endpoint `/ws`, broker `/topic`, app prefix `/app`.
-- `configuration/ApplicationInitConfig.java`: seed admin, test user, default sensors/devices.
-- `src/main/resources/application.yaml`: port `8080`, MySQL datasource, JPA `ddl-auto: update`, JWT config.
-
-Controller surface:
-
-| Module | Endpoint chinh | Vai tro |
-|---|---|---|
-| Auth | `POST /auth/register`, `/auth/login`, `/auth/logout`, `/auth/verify`, `/auth/refresh` | Dang ky, dang nhap, token lifecycle |
-| Users | `GET /users`, `GET /users/{userId}`, `GET /users/my-info`, `PUT /users/{userId}`, `DELETE /users/{userId}` | Ho so user va admin user management |
-| Sensors | `GET /users/{userId}/sensors`, `GET /users/{userId}/sensors/{sensorId}`, `GET/DELETE /users/{userId}/sensors/{sensorId}/data` | Doc sensor va lich su sensor |
-| IoT ingest | `POST /iot/sensor-data`, `/sensor-data`, `/sensors/sensor-data` | Gateway/test script gui sensor data |
-| Devices | `GET /users/{userId}/devices`, `GET /users/{userId}/devices/{deviceId}`, `POST /users/{userId}/devices/{deviceId}/control` | Dieu khien thiet bi thu cong |
-| Commands | `GET /users/{userId}/commands`, `GET /users/{userId}/commands/{commandId}`, `DELETE /users/{userId}/commands/{commandId}` | Lich su lenh |
-| Speech | `GET /users/{userId}/speech-inputs`, `POST /users/{userId}/speech-inputs/predict` | Dieu khien bang giong noi va lich su speech |
-| Auto rules | `GET/POST /users/{userId}/auto-rules`, `GET/PUT/DELETE /users/{userId}/auto-rules/{autoRuleId}` | CRUD auto rule |
-| WebSocket | `/ws`, topic `/topic/commands` | Backend publish command cho gateway/device |
-
-Service flow:
-
-- `SensorService.handleSensorData`: validate `userId`, map `sensorType` vao sensor cua user, luu `SensorData` voi timestamp hien tai.
-- `DeviceService.controlDevice`: clamp target value `0..100`, den chi nhan `0` hoac `100`, luu `CommandType.MANUAL`, publish WebSocket command.
-- `SpeechInputService.processSpeechInput`: goi AI service qua `AiPredictionClient` va `AI_SERVICE_BASE_URL`, validate confidence, map label thanh thiet bi/action, luu `SpeechInput`, cap nhat device, luu `CommandType.SPEECH`, publish command.
-- `AutoRuleScheduler.run`: moi 5 giay goi `AutoRuleService.handleSensor`.
-- `AutoRuleService.handleSensor`: doc 2 sensor data moi nhat, trigger khi gia tri moi cat qua nguong, ton trong cooldown, chon 1 rule/1 device, luu `CommandType.AUTO_RULE`, publish command.
-- `CommandService.sendCmdToGateway`: publish JSON `{userId, deviceType, value}` toi `/topic/commands`.
-
-Data model chinh:
-
-- `User`: tai khoan, profile, roles.
-- `Sensor`: cam bien theo user, type `TEMPERATURE`, `HUMIDITY`, `LIGHT`.
-- `SensorData`: composite id gom `sensorId` va `timestamp`, gia tri sensor.
-- `Device`: thiet bi theo user, type `FAN`, `LIGHT`, `intensityLevel`.
-- `Command`: log lenh manual/auto/speech, previous/current intensity.
-- `SpeechInput`: raw text, predicted label, confidence, device, target value.
-- `AutoRule`: sensor, operator, threshold, target device/value, active/cooldown/trigger metadata.
-- `InvalidatedToken`: token da logout/invalidated.
-
-## Frontend map
-
-Entrypoint:
-
-- `frontend/src/main.tsx`
-- `frontend/src/app/App.tsx`
-
-Routing:
-
-| Route | Page |
+| Goal | Ý nghĩa trong dự án |
 |---|---|
-| `/login` | `LoginPage` |
-| `/register` | `RegisterPage` |
-| `/dashboard` | `DashboardPage` |
-| `/sensors/:sensorType` | `SensorDetailPage` |
-| `/charts` | `ChartsPage` |
-| `/history` | `HistoryPage` |
-| `/auto-rules` | `AutoRulesPage` |
-| `/profile` | `ProfilePage` |
-| `/speech-history` | `SpeechHistoryPage` |
-| `/admin` | `AdminPage` |
-| `/` | redirect theo auth/role |
+| Modular | Tách frontend, backend, AI service và IoT edge để mỗi phần có thể phát triển/kiểm thử độc lập |
+| Local-first | Có thể chạy toàn bộ hệ thống trên máy cá nhân với MySQL Docker Compose |
+| Real-time control | Command từ backend được đẩy xuống gateway qua WebSocket STOMP |
+| Hardware-friendly | Gateway dùng protocol serial đơn giản để dễ tích hợp YoloBit |
+| Testable | Có simulator cho sensor flow và command flow khi chưa có thiết bị thật |
+| Extendable | Có thể thêm sensor/device/intent/rule mà không thay đổi toàn bộ hệ thống |
 
-Frontend integration:
+## 3. High-Level Context
 
-- `src/services/api.ts` la compatibility barrel; API chinh nam trong `src/shared/api/` va `src/features/*/api.ts`.
-- Axios base URL: `VITE_API_BASE_URL` hoac mac dinh `http://localhost:8080`.
-- JWT token luu trong `localStorage` key `smart_classroom_token`.
-- User cache luu trong `localStorage` key `smart_classroom_user`.
-- Path alias `@/*` tro den `src/*` trong `tsconfig.json` va `vite.config.ts`.
-- React Query dung cho caching/refetch, mac dinh `retry: 1`, `refetchOnWindowFocus: false`.
+```mermaid
+flowchart TD
+    User["User / Admin"] -->|"Browser"| Frontend["React + Vite Frontend"]
+    Frontend -->|"REST API + JWT"| Backend["Spring Boot Backend"]
+    Backend -->|"JPA repositories"| MySQL["MySQL Database"]
+    Backend -->|"POST /predict"| AI["FastAPI AI Service"]
 
-API groups trong frontend:
+    Device["YoloBit / IoT Device"] -->|"Serial: T/H/L lines"| Gateway["Python IoT Gateway"]
+    Gateway -->|"POST /iot/sensor-data"| Backend
+    Backend -->|"STOMP /topic/commands"| Gateway
+    Gateway -->|"Serial: S<value>, 1, 0"| Device
+```
 
-- `authApi`: login/register/logout/getMyInfo/updateProfile.
-- `feedApi`: sensor latest/history/deleteHistory, map backend sensor type sang feed UI `bbc-temp`, `bbc-humi`, `bbc-lux`.
-- `deviceApi`: lay device, dieu khien fan/light, map fan level UI `0..3` sang intensity `0,33,66,100`.
-- `sensorApi`: lay sensor summaries.
-- `autoRuleApi`: CRUD auto rules.
-- `speechApi`: speech predict va speech history.
-- `historyApi`: map command backend thanh log hien thi.
-- `adminApi`: quan ly users.
+## 4. Runtime Components
 
-## AI service map
+### Frontend
 
-Entrypoint:
+| Area | Responsibility |
+|---|---|
+| Routing | Login, register, dashboard, sensor detail, chart, history, auto rules, profile, speech history, admin |
+| API client | Axios wrapper, JWT injection, response unwrapping, 401 handling |
+| State | React Context for auth/theme, React Query for server state |
+| UI workflow | Device control, speech command submission, rule management, history browsing |
+| Data provider | Default backend provider, optional legacy Adafruit mode |
 
-- `ai-service/service.py`
+### Backend
 
-Endpoints:
+| Area | Responsibility |
+|---|---|
+| Authentication | Register, login, logout, JWT verify, token refresh |
+| Authorization | JWT resource server and method-level ownership/admin checks |
+| Sensor ingest | Receive sensor readings from gateway/simulator |
+| Device control | Normalize target values, persist command history, publish gateway command |
+| Speech control | Call AI service, map predicted label to device command |
+| Auto rules | Evaluate threshold crossing and cooldown via scheduler |
+| WebSocket | STOMP simple broker, command topic `/topic/commands` |
+| Persistence | JPA entities and repositories backed by MySQL |
 
-- `GET /health`: tra `{"status": "ok"}`.
-- `POST /predict`: body chap nhan `rawtext` hoac `rawText`, response `{predictLabel, confidence}`.
+### AI Service
 
-Pipeline:
+| Area | Responsibility |
+|---|---|
+| API | `GET /health`, `POST /predict` |
+| Preprocessing | Normalize Vietnamese text, remove punctuation, normalize slang, tokenize |
+| Prediction | TF-IDF vectorizer, feature selector, trained model |
+| Label mapping | Convert model labels to system labels like `TURN_ON_FAN` |
+| Confidence handling | Return `UNKNOWN` when confidence is below threshold |
 
-1. Normalize text: lowercase, collapse spaces.
-2. Remove punctuation while preserving Vietnamese characters.
-3. Normalize slang: `ko`, `k`, `hok` -> `khong`; `giùm`, `dum` -> `giup`.
-4. Tokenize bang `underthesea.word_tokenize`.
-5. Vectorize bang `models/vectorizer.pkl`.
-6. Feature select bang `models/selector.pkl`.
-7. Predict bang `models/model_v1.pkl`.
-8. Map labels: `bat_quat`, `tat_quat`, `bat_den`, `tat_den` sang system labels.
-9. Confidence duoi `0.7` tra `UNKNOWN`.
+### IoT Edge
 
-## IoT edge map
+| Area | Responsibility |
+|---|---|
+| Serial reader | Read sensor lines from YoloBit |
+| Parser | Convert `T:`, `H:`, `L:` lines to backend sensor payloads |
+| Backend client | POST sensor data to backend |
+| STOMP client | Subscribe to `/topic/commands` |
+| Command mapper | Convert backend command messages to serial commands |
+| Simulator scripts | Generate sensor readings and emulate command receiver without hardware |
 
-Entrypoints:
+## 5. Layered View
 
-- `iot-edge/gateway.py`: gateway that doc serial va bridge voi backend.
-- `iot-edge/sensor_node.py`: sensor simulator/node helper.
-- `iot-edge/test_sensor_flow.py`: random sensor data len backend, khong can hardware.
-- `iot-edge/test_device_control_flow.py`: lang nghe `/topic/commands`, khong can hardware.
+```mermaid
+flowchart TB
+    subgraph Presentation["Presentation Layer"]
+        React["React pages/components"]
+        Hooks["Hooks and contexts"]
+    end
 
-Gateway behavior:
+    subgraph ApiLayer["API Layer"]
+        Controllers["Spring REST controllers"]
+        WebSocket["STOMP WebSocket endpoint"]
+        FastApiRoutes["FastAPI routes"]
+    end
 
-- Serial default: `COM3`, baudrate `115200`.
-- Parse lines:
-  - `T:<value>` -> `TEMPERATURE`
-  - `H:<value>` -> `HUMIDITY`
-  - `L:<value>` -> `LIGHT`
-- POST sensor data len `${SMART_ROOM_BACKEND_URL}/iot/sensor-data`.
-- Subscribe STOMP `/topic/commands` qua `${SMART_ROOM_WS_URL}`.
-- Map command:
-  - `FAN` value -> serial `S<value>`
-  - `LIGHT` value > 0 -> serial `1`, nguoc lai `0`
+    subgraph DomainLayer["Domain Layer"]
+        AuthService["AuthenticationService"]
+        SensorService["SensorService"]
+        DeviceService["DeviceService"]
+        SpeechService["SpeechInputService"]
+        RuleService["AutoRuleService"]
+    end
 
-Bien moi truong quan trong:
+    subgraph IntegrationLayer["Integration Layer"]
+        AiClient["AiPredictionClient"]
+        GatewayClient["IoT BackendClient"]
+        StompSubscriber["IoT CommandSubscriber"]
+    end
 
-- `SMART_ROOM_USER_ID`
-- `SMART_ROOM_SERIAL_PORT`
-- `SMART_ROOM_BAUDRATE`
-- `SMART_ROOM_BACKEND_URL`
-- `SMART_ROOM_WS_URL`
-- `SMART_ROOM_BACKEND_TOKEN`
-- `SMART_ROOM_SENSOR_INTERVAL`
+    subgraph DataLayer["Data Layer"]
+        Repositories["JPA repositories"]
+        MySQL["MySQL"]
+        ModelFiles["AI model artifacts"]
+    end
 
-## Luong nghiep vu chinh
+    React --> Hooks
+    Hooks --> Controllers
+    Controllers --> AuthService
+    Controllers --> SensorService
+    Controllers --> DeviceService
+    Controllers --> SpeechService
+    Controllers --> RuleService
+    SpeechService --> AiClient
+    AiClient --> FastApiRoutes
+    FastApiRoutes --> ModelFiles
+    SensorService --> Repositories
+    DeviceService --> Repositories
+    RuleService --> Repositories
+    Repositories --> MySQL
+    RuleService --> WebSocket
+    DeviceService --> WebSocket
+    SpeechService --> WebSocket
+    WebSocket --> StompSubscriber
+    GatewayClient --> Controllers
+```
 
-Sensor data:
+## 6. Backend Domain Model
+
+```mermaid
+erDiagram
+    USER ||--o{ SENSOR : owns
+    USER ||--o{ DEVICE : owns
+    USER ||--o{ COMMAND : creates
+    USER ||--o{ SPEECH_INPUT : submits
+    USER ||--o{ AUTO_RULE : configures
+
+    SENSOR ||--o{ SENSOR_DATA : records
+    SENSOR ||--o{ AUTO_RULE : triggers
+    DEVICE ||--o{ COMMAND : receives
+    DEVICE ||--o{ AUTO_RULE : target
+    DEVICE ||--o{ SPEECH_INPUT : target
+    SPEECH_INPUT ||--o| COMMAND : produces
+    AUTO_RULE ||--o{ COMMAND : produces
+
+    USER {
+        string id
+        string email
+        string phone
+        string firstName
+        string lastName
+        set roles
+    }
+
+    SENSOR {
+        string id
+        SensorType sensorType
+        double currentValue
+    }
+
+    SENSOR_DATA {
+        string sensorId
+        datetime timestamp
+        double value
+    }
+
+    DEVICE {
+        string id
+        DeviceType deviceType
+        int intensityLevel
+    }
+
+    COMMAND {
+        string id
+        CommandType commandType
+        int previousIntensity
+        int currentIntensity
+        datetime createdAt
+    }
+
+    SPEECH_INPUT {
+        string id
+        string rawtext
+        string predictLabel
+        double confidence
+        int targetValue
+    }
+
+    AUTO_RULE {
+        string id
+        Operator operator
+        double thresh
+        int targetValue
+        boolean active
+        datetime lastTriggerAt
+        datetime deletedAt
+    }
+```
+
+## 7. Main Workflows
+
+### 7.1 Sensor Ingestion
+
+```mermaid
+sequenceDiagram
+    participant Device as YoloBit / Simulator
+    participant Gateway as IoT Gateway
+    participant Backend as Backend API
+    participant Service as SensorService
+    participant DB as MySQL
+    participant UI as Frontend
+
+    Device->>Gateway: T:28.5 / H:60 / L:400
+    Gateway->>Gateway: parse_sensor_line()
+    Gateway->>Backend: POST /iot/sensor-data
+    Backend->>Service: handleSensorData(userId, request)
+    Service->>DB: Insert SensorData
+    UI->>Backend: GET /users/{userId}/sensors
+    Backend-->>UI: SensorResponse[]
+```
+
+### 7.2 Manual Device Control
+
+```mermaid
+sequenceDiagram
+    participant UI as Frontend
+    participant Backend as Backend API
+    participant Service as DeviceService
+    participant DB as MySQL
+    participant WS as STOMP Broker
+    participant Gateway as IoT Gateway
+    participant Device as YoloBit
+
+    UI->>Backend: POST /users/{userId}/devices/{deviceId}/control
+    Backend->>Service: controlDevice()
+    Service->>Service: normalizeTargetValue()
+    Service->>DB: Update Device + save MANUAL Command
+    Service->>WS: publish GatewayCommandMessage
+    WS-->>Gateway: MESSAGE /topic/commands
+    Gateway->>Gateway: map_command()
+    Gateway->>Device: Serial command
+```
+
+### 7.3 Speech Command
+
+```mermaid
+sequenceDiagram
+    participant UI as Frontend
+    participant Backend as Backend API
+    participant Speech as SpeechInputService
+    participant AI as AI Service
+    participant DB as MySQL
+    participant WS as STOMP Broker
+    participant Gateway as IoT Gateway
+
+    UI->>Backend: POST /users/{userId}/speech-inputs/predict
+    Backend->>Speech: processSpeechInput()
+    Speech->>AI: POST /predict
+    AI-->>Speech: predictLabel + confidence
+    Speech->>Speech: parseIntent() + resolveTargetValue()
+    Speech->>DB: Save SpeechInput, Device, SPEECH Command
+    Speech->>WS: publish GatewayCommandMessage
+    WS-->>Gateway: command message
+```
+
+### 7.4 Auto Rule
+
+```mermaid
+flowchart LR
+    A["SensorData inserted"] --> B["AutoRuleScheduler every 5 seconds"]
+    B --> C["Load active rules"]
+    C --> D["Read latest two SensorData rows"]
+    D --> E{"Crossed threshold?"}
+    E -->|"No"| F["Update lastEvaluatedAt only"]
+    E -->|"Yes"| G{"Cooldown passed?"}
+    G -->|"No"| F
+    G -->|"Yes"| H["Select one rule per target device"]
+    H --> I["Update Device"]
+    I --> J["Save AUTO_RULE Command"]
+    J --> K["Publish /topic/commands"]
+```
+
+## 8. Integration Contracts
+
+### REST
+
+- Frontend uses Axios with `VITE_API_BASE_URL`.
+- Authenticated requests carry `Authorization: Bearer <token>`.
+- Backend wraps responses in `ApiResponse<T>`.
+
+### WebSocket / STOMP
+
+- Endpoint: `/ws`
+- Broker prefix: `/topic`
+- Application prefix: `/app`
+- Gateway subscribes to `/topic/commands`.
+- Command payload:
+
+```json
+{
+  "userId": "c7ab5c64-cee4-4ef6-9b2e-1f71824c0920",
+  "deviceType": "FAN",
+  "value": 66
+}
+```
+
+### Serial
+
+Sensor input from device to gateway:
 
 ```text
-Serial T/H/L -> iot-edge/gateway.py -> POST /iot/sensor-data
--> SensorDataController -> SensorService.handleSensorData
--> MySQL SensorData -> frontend feedApi/chart/history
+T:<value> -> TEMPERATURE
+H:<value> -> HUMIDITY
+L:<value> -> LIGHT
 ```
 
-Manual control:
+Command output from gateway to device:
 
 ```text
-Frontend deviceApi.sendCommand
--> POST /users/{userId}/devices/{deviceId}/control
--> DeviceService.controlDevice
--> CommandService.sendCmdToGateway
--> WebSocket /topic/commands
--> iot-edge/gateway.py
--> serial command to device
+FAN value   -> S<value>
+LIGHT > 0   -> 1
+LIGHT <= 0  -> 0
 ```
 
-Voice control:
+### AI service
 
-```text
-Frontend speechApi.process
--> POST /users/{userId}/speech-inputs/predict
--> SpeechInputService.processSpeechInput
--> ai-service POST /predict
--> update Device + save SpeechInput/Command
--> WebSocket /topic/commands
--> iot-edge/gateway.py
+Backend sends:
+
+```json
+{
+  "rawtext": "bật quạt"
+}
 ```
 
-Auto rule:
+AI service returns:
 
-```text
-SensorData inserted
--> AutoRuleScheduler every 5s
--> AutoRuleService.handleSensor
--> threshold crossing + cooldown check
--> update Device + save Command
--> WebSocket /topic/commands
+```json
+{
+  "predictLabel": "TURN_ON_FAN",
+  "confidence": 0.93
+}
 ```
 
-## Cach chay nhanh
+## 9. Security Model
 
-Backend:
+| Concern | Current approach |
+|---|---|
+| Authentication | JWT bearer token generated by backend |
+| Password storage | BCrypt password encoder |
+| Token invalidation | Logout stores invalidated tokens |
+| Authorization | Method-level checks allow admin or owner access |
+| Public endpoints | Auth bootstrap endpoints, IoT ingest endpoint, WebSocket endpoint |
+| CORS | Configured by `CORS_ALLOWED_ORIGINS` |
+| Production secrets | Must be provided through environment variables |
 
-```powershell
-cd backend
-mvn spring-boot:run
-```
+Important limitation: `/iot/sensor-data` is public to support simple gateway/simulator integration. If the system is exposed outside a trusted network, use `SMART_ROOM_BACKEND_TOKEN`, network-level controls, or a dedicated gateway authentication strategy.
 
-Frontend:
+## 10. Operational Assumptions
 
-```powershell
-cd frontend
-npm install
-npm run dev
-```
+- One user has default sensors for `TEMPERATURE`, `HUMIDITY`, and `LIGHT`.
+- Device types currently supported by the gateway protocol are `FAN` and `LIGHT`.
+- Fan accepts intensity from `0` to `100`.
+- Light is treated as binary at gateway level: any value above `0` becomes `1`, otherwise `0`.
+- Auto rules are evaluated periodically by scheduler, not synchronously during sensor ingestion.
+- AI prediction is synchronous from backend to AI service; backend request latency depends on AI service availability.
 
-AI service:
+## 11. Extension Points
 
-```powershell
-cd ai-service
-python -m venv .venv
-.\.venv\Scripts\activate
-pip install -r requirements.txt
-uvicorn service:app --host 0.0.0.0 --port 8000
-```
+| Extension | Required changes |
+|---|---|
+| Add a new sensor type | Add backend enum, seed sensor, parser mapping, frontend mapping/UI |
+| Add a new device type | Add backend enum/entity seed, device control logic, gateway command mapping, frontend control component |
+| Add a new speech intent | Retrain/update AI model labels, update backend intent mapping, update tests |
+| Add gateway authentication | Require token on `/iot/sensor-data`, configure `SMART_ROOM_BACKEND_TOKEN`, update deployment docs |
+| Add production deployment | Externalize secrets, use managed MySQL, set CORS domains, add process supervision |
 
-IoT sensor test:
+## 12. Related Documents
 
-```powershell
-$env:SMART_ROOM_USER_ID="c7ab5c64-cee4-4ef6-9b2e-1f71824c0920"
-python iot-edge\test_sensor_flow.py
-```
-
-IoT command test:
-
-```powershell
-$env:SMART_ROOM_USER_ID="c7ab5c64-cee4-4ef6-9b2e-1f71824c0920"
-python iot-edge\test_device_control_flow.py
-```
-
-## Diem can theo doi
-
-- `backend/src/main/resources/application.yaml` da chuyen secret sang env vars; khi deploy dung JWT signer key va DB password moi.
-- `AI_SERVICE_BASE_URL` va `CORS_ALLOWED_ORIGINS` da co cau hinh env, can set dung domain khi deploy.
-- `frontend/src/utils/constants.ts` con mot so endpoint legacy nhu `/feeds/latest`, `/auto-mode/config`, `/history/logs`; API runtime chinh da nam trong `src/features/*/api.ts`.
-- `front-end/` co the con artifact local bi Windows lock; thu muc nay da bi ignore va co the xoa bang `scripts/clean.ps1` sau khi dung process lien quan.
+- [Setup Guide](setup.md)
+- [API Reference](api.md)
+- [IoT Edge Guide](iot.md)
+- [AI Service Guide](ai-service.md)
+- [Environment Variables](env.md)
+- [Development Guide](development.md)
