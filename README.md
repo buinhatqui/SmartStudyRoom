@@ -18,6 +18,7 @@ Smart Study Room là hệ thống phòng học thông minh tích hợp IoT, back
 |---|---:|---|
 | Bùi Nhật Quí | 2312864 | [@buinhatqui](https://github.com/buinhatqui) |
 | Nguyễn Tấn Phúc | 2312703 | [@ngTanPhuc](https://github.com/ngTanPhuc) |
+| Huỳnh Duy Chương | 2310363 | [@DuyChuong3011](https://github.com/DuyChuong3011) |
 | Trần Kiến Quốc | 2312878 | [@KienQuoc52withVeolaohtihn](https://github.com/KienQuoc52withVeolaohtihn) |
 | Đặng Thị Thúy Vi | 2313877 | [@ThuyZii](https://github.com/ThuyZii) |
 | Trần Anh Tài | 2252726 | [@taitrn](https://github.com/taitrn) |
